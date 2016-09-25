@@ -3,15 +3,30 @@ var crypto = require('crypto'),
     Post = require('../models/post.js');
 var express = require('express');
 var router = express.Router();
+var multer = require('multer');
+
+//文件上传
+var storage = multer.diskStorage({
+	destination: function (req,file,cb) {
+		cb(null, './public/images')
+	},
+	filename: function (req, file, cb) {
+		cb(null,file.originalname)
+	}
+});
+var upload = multer({
+	storage: storage
+});
 
 /* GET home page. */
 router.get('/', function (req, res) {
-  Post.get(null, function (err, posts) {
+  Post.getAll(null, function (err, posts, users) {
     if (err) {
       posts = [];
     } 
     res.render('index', {
       title: '主页',
+      // name: users.name,
       user: req.session.user,
       posts: posts,
       success: req.flash('success').toString(),
@@ -128,10 +143,6 @@ router.post('/post', function(req, res) {
 	});
 });
 
-router.post('/post', checkLogin);
-router.post('/post', function(req, res, next) {
-});
-
 router.get('/logout', checkLogin);
 router.get('/logout', function(req, res, next) {
 	req.session.user = null;
@@ -139,9 +150,66 @@ router.get('/logout', function(req, res, next) {
 	res.redirect('/'); //登出成功后跳转到主页
 });
 
+router.get('/upload', checkLogin);
+router.get('/upload', function (req, res) {
+  res.render('upload', {
+    title: '文件上传',
+    user: req.session.user,
+    success: req.flash('success').toString(),
+    error: req.flash('error').toString()
+  });
+});
+
+//添加对文件上传的支持
+router.post('/upload',checkLogin);
+router.post('/upload',upload.array('field1', 5),function(req, res) {
+	req.flash('success', '文件上传成功!');
+	req.redirect('/upload');
+});
+
+router.get('/u/:name/:day', function (req, res) {
+  //检查用户是否存在
+  User.get(req.params.name, function (err, user) {
+    if (!user) {
+      req.flash('error', '用户不存在!'); 
+      return res.redirect('/');//用户不存在则跳转到主页
+    }
+    //查询并返回该用户的所有文章
+    Post.getAll(user.name, function (err, posts) {
+      if (err) {
+        req.flash('error', err); 
+        return res.redirect('/');
+      } 
+      res.render('user', {
+        title: user.name,
+        posts: posts,
+        user : req.session.user,
+        success : req.flash('success').toString(),
+        error : req.flash('error').toString()
+      });
+    });
+  }); 
+});
+
+router.get('/u/:name/:day/:title', function (req, res) {
+  Post.getOne(req.params.name, req.params.day, req.params.title, function (err, post) {
+    if (err) {
+      req.flash('error', err); 
+      return res.redirect('/');
+    }
+    res.render('article', {
+      title: req.params.title,
+      post: post,
+      user: req.session.user,
+      success: req.flash('success').toString(),
+      error: req.flash('error').toString()
+    });
+  });
+});
+
 function checkLogin(req, res, next) {
     if (!req.session.user) {
-      // req.flash('error', '未登录!'); 
+      req.flash('error', '未登录!'); 
       res.redirect('/login');
     }
     next();
@@ -149,7 +217,7 @@ function checkLogin(req, res, next) {
 
 function checkNotLogin(req, res, next) {
 	if (req.session.user) {
-	  // req.flash('error', '已登录!'); 
+	  req.flash('error', '已登录!'); 
 	  res.redirect('back');
 	}
 	next();
